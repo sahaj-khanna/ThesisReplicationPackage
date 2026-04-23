@@ -1,0 +1,4 @@
+seasonal_adjustment,outcome,model_stub,att,se,pvalue,ll,ul,n_obs,n_clusters
+Pre-entry only,Log Departures,lndep_pretreat_sa_maincov_never_dripw,.0994150836319639,.017953195,,.062453933,.13637623,193624,5990
+Pre-entry only,Log Passengers,lnpax_pretreat_sa_maincov_never_dripw,.121444381227276,.019384814,,.08243721,.16045155,193624,5990
+Pre-entry only,Log Seats,lnseats_pretreat_sa_maincov_never_dripw,.1138241297534927,.01872192,,.075738505,.15190975,193624,5990

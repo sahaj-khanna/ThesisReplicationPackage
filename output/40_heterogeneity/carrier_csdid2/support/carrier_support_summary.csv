@@ -1,0 +1,14 @@
+metric,subgroup,value
+max_abs_mean_sa_ln_dep_panel_qoy,all,2.17110280371e-15
+max_abs_mean_sa_ln_pax_panel_qoy,all,3.75008666096e-15
+max_abs_mean_sa_ln_seats_panel_qoy,all,4.34220560742e-15
+never_treated_routes,lcc,1631
+never_treated_routes,legacy,1824
+subgroup_obs,lcc,43272
+subgroup_obs,legacy,61327
+subgroup_panels,lcc,2378
+subgroup_panels,legacy,3214
+subgroup_routes,lcc,1949
+subgroup_routes,legacy,2181
+treated_routes,lcc,318
+treated_routes,legacy,357

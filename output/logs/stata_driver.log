@@ -1,0 +1,2581 @@
+-------------------------------------------------------------------------------
+      name:  <unnamed>
+       log:  /Users/sahaj/Desktop/honours_thesis/replication_package/output/log
+> s/stata_driver.log
+  log type:  text
+ opened on:  22 Apr 2026, 22:32:13
+
+. 
+. if "`run_main_results'" == "1" {
+.     do "${package_root}/code/20_main_results/01_prepare_panel.do"
+.     do "${package_root}/code/20_main_results/02_main_atts.do"
+.     do "${package_root}/code/20_main_results/03_extract_main_results.do"
+.     do "${package_root}/code/20_main_results/04_fare_event.do"
+.     do "${package_root}/code/20_main_results/05_departures_event.do"
+.     do "${package_root}/code/20_main_results/06_delay_event.do"
+.     do "${package_root}/code/20_main_results/07_reliability_appendix.do"
+. }
+
+. 
+. if "`run_mechanisms'" == "1" {
+.     do "${package_root}/code/30_mechanisms/01_route_passenger_panel_prep.do"
+.     do "${package_root}/code/30_mechanisms/02_route_passenger_event_full_sa.d
+> o"
+.     do "${package_root}/code/30_mechanisms/03_load_factor_event.do"
+.     do "${package_root}/code/30_mechanisms/04_incumbent_passengers_seats_full
+> _sa.do"
+. }
+
+. 
+. if "`run_heterogeneity'" == "1" {
+.     do "${package_root}/code/40_heterogeneity/01_fare_percentiles.do"
+.     do "${package_root}/code/40_heterogeneity/02_carrier_type.do"
+.     do "${package_root}/code/40_heterogeneity/03_frontier_service_frequency.d
+> o"
+. }
+
+. 
+. if "`run_robustness'" == "1" {
+.     do "${package_root}/code/50_robustness/01_scheduled_time.do"
+
+. * Scheduled-time robustness check
+. version 18
+
+. clear all
+
+. set more off
+
+. 
+. do "${package_root}/code/shared/paths.do"
+
+. *****************************************************************************
+> ***
+. * replication_package/code/shared/paths.do
+. * Central package paths, output roots, and thesis-analysis specs.
+. *****************************************************************************
+> ***
+. 
+. version 18
+
+. 
+. if `"$package_root"' == "" {
+.     global package_root `"`c(pwd)'"'
+. }
+
+. 
+. global repo_root = subinstr("$package_root", "/replication_package", "", .)
+
+. 
+. global code_root   "${package_root}/code"
+
+. global shared_code_dir "${code_root}/shared"
+
+. 
+. global data_root   "${package_root}/data"
+
+. global input_dir   "${data_root}/final"
+
+. global raw_data_dir "${data_root}/raw"
+
+. global intermediate_data_dir "${data_root}/intermediate"
+
+. 
+. global output_dir   "${package_root}/output"
+
+. global logs_dir     "${output_dir}/logs"
+
+. global datawork_dir "${output_dir}/shared/data_work"
+
+. global results_main "${output_dir}/20_main_results"
+
+. global results_het  "${output_dir}/40_heterogeneity"
+
+. global results_rob  "${output_dir}/50_robustness"
+
+. global results_sum  "${output_dir}/10_summary_background"
+
+. 
+. capture mkdir "${output_dir}"
+
+. capture mkdir "${logs_dir}"
+
+. capture mkdir "${datawork_dir}"
+
+. capture mkdir "${results_main}"
+
+. capture mkdir "${results_het}"
+
+. capture mkdir "${results_rob}"
+
+. capture mkdir "${results_sum}"
+
+. 
+. * -------------------------- CORE PANEL VARS --------------------------------
+> --
+. global ivar panel_id
+
+. global tvar time_period
+
+. global gvar first_treat
+
+. global clustvar route_id
+
+. 
+. * ------------------------- BASE SAMPLE FILTER ------------------------------
+> --
+. global base_sample "(is_never_f9_route == 1 | is_f9_entry_route == 1)"
+
+. 
+. * ----------------------------- OUTCOMES ------------------------------------
+> --
+. global outcomes_main "ln_average_fare average_fare fare_ratio_90_10 total_sea
+> ts total_departures_performed load_factor departure_delay arrival_delay delay
+> _15 arrival_15 cancellation"
+
+. global outcomes_no_covars "ln_average_fare average_fare fare_ratio_90_10 tota
+> l_seats total_departures_performed load_factor departure_delay arrival_delay 
+> delay_15 arrival_15 cancellation"
+
+. global outcomes_fare_percentiles "fare_p10 fare_p25 fare_p75 fare_p90"
+
+. global outcomes_carrier_type "ln_average_fare fare_ratio_90_10 total_departur
+> es_performed total_seats load_factor"
+
+. global outcomes_robust_key "ln_average_fare total_departures_performed arriva
+> l_delay"
+
+. 
+. * -------------------------- COVARIATE SPECS --------------------------------
+> --
+. global covars_none ""
+
+. global covars_small "average_dist route_hhi ln_geo_mean_pop ln_geo_mean_incom
+> e origin_leisure_share_emp dest_leisure_share_emp big_city_route hub_route"
+
+. global covars_large "average_dist route_hhi route_capacity_passengers ln_geo_
+> mean_pop ln_geo_mean_income origin_leisure_share_emp dest_leisure_share_emp b
+> ig_city_route any_lcc_route hub_route"
+
+. 
+. global covar_spec_main "small"
+
+. global covar_spec_het  "small"
+
+. 
+. * -------------------------- CARRIER SUBGROUPS ------------------------------
+> --
+. global legacy_filter `"inlist(carrier, "AA", "DL", "UA", "US", "AS", "CO")"'
+
+. global lcc_filter    `"inlist(carrier, "WN", "B6", "FL", "VX")"'
+
+. global ulcc_filter   `"inlist(carrier, "NK", "G4")"'
+
+. 
+. * ------------------------- STANDARDIZED SETTINGS ---------------------------
+> ---
+. global seed_std 240422
+
+. global wb_reps 999
+
+. global wpre_main 6
+
+. global wpost_main 8
+
+. global wpre_delay 6
+
+. global wpost_quality 8
+
+. 
+end of do-file
+
+. set seed ${seed_std}
+
+. 
+. local in_dta   "${datawork_dir}/analysis_panel.dta"
+
+. local out_root "${results_rob}/scheduled_time"
+
+. local out_ster "`out_root'/models"
+
+. local out_event "`out_root'/event"
+
+. local plots_dir "`out_root'/plots"
+
+. 
+. capture mkdir "`out_root'"
+
+. capture mkdir "`out_ster'"
+
+. capture mkdir "`out_event'"
+
+. capture mkdir "`plots_dir'"
+
+. 
+. use "`in_dta'", clear
+
+. xtset panel_id time_period
+
+Panel variable: panel_id (unbalanced)
+ Time variable: time_period, 1 to 36, but with gaps
+         Delta: 1 unit
+
+. 
+. capture drop cluster_id
+
+. gen long cluster_id = route_id
+
+. 
+. local model_stub "scheduled_time_maincov_never_dripw"
+
+. cd "`out_ster'"
+/Users/sahaj/Desktop/honours_thesis/replication_package/output/50_robustness/sc
+> heduled_time/models
+
+. csdid2 scheduled_time ${covars_small}, ///
+>     ivar(panel_id) time(time_period) gvar(first_treat) ///
+>     method(dripw) cluster(cluster_id) short
+Using method dripw
+Panel is not balanced
+Will use observations with Pair balanced (observed at t0 and t1)
+----+--- 1 ---+--- 2 ---+--- 3 ---+--- 4 ---+--- 5 
+....x......xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx    50
+xxxxxxxxxxxxxxxxxxxx..............................   100
+..................................................   150
+..................................................   200
+..................................................   250
+.........xx.......................................   300
+..................................................   350
+...................................xxxxxx......xxx   400
+xxxxxxxxxxxxxxxxxxxx..............................   450
+.......xxxxxxxxxx....xxxxxxxxxxxxxxxxxxx..........   500
+...........................................xxxxxxx   550
+xxxxxxxxxx........................................   600
+...........................................xxxxxx.   650
+...............
+. estimates save "`model_stub'", replace
+file scheduled_time_maincov_never_dripw.ster saved
+
+. 
+. estat simple, wboot reps(${wb_reps}) rseed(${seed_std})
+---------------------------------------------------------------------
+            | Coefficient  Std. err.      t      [95% conf. interval]
+------------+--------------------------------------------------------
+  SimpleATT |  -.4032799   .3129857    -1.29    -.9945648     .188005
+---------------------------------------------------------------------
+WildBootstrap Standard errors
+with 999 Repetitions
+
+. estat event, window(-${wpre_main} ${wpost_main}) wboot reps(${wb_reps}) rseed
+> (${seed_std})
+---------------------------------------------------------------------
+            | Coefficient  Std. err.      t      [95% conf. interval]
+------------+--------------------------------------------------------
+    Pre_avg |   .0097258    .087731     0.11     -.233336    .2527876
+   Post_avg |  -.1440421   .3102672    -0.46    -1.003648    .7155639
+        tm6 |  -.0015668   .3479738    -0.00    -.9656402    .9625066
+        tm5 |   .1910421   .2368419     0.81    -.4651367    .8472208
+        tm4 |  -.0356164   .3926488    -0.09    -1.123464    1.052231
+        tm3 |  -.1090097   .2249376    -0.48     -.732207    .5141875
+        tm2 |  -.0187017   .3444252    -0.05    -.9729434    .9355401
+        tm1 |   .0322074   .2436229     0.13    -.6427583    .7071732
+        tp0 |   .0496174   .3759893     0.13    -.9920739    1.091309
+        tp1 |   .2089917   .5069009     0.41    -1.195395    1.613378
+        tp2 |   .2539507   .2742174     0.93    -.5057782     1.01368
+        tp3 |  -.0074383    .181341    -0.04    -.5098499    .4949733
+        tp4 |  -.0180529   .4094046    -0.04    -1.152322    1.116217
+        tp5 |  -.0586997   .5423689    -0.11    -1.561351    1.443952
+        tp6 |  -.4242554   .2937077    -1.44    -1.237983    .3894718
+        tp7 |  -.7376386    .223577    -3.30    -1.357066   -.1182109
+        tp8 |  -.5628542    .482067    -1.17    -1.898437    .7727289
+---------------------------------------------------------------------
+WildBootstrap Standard errors
+with 999 Repetitions
+
+. matrix E = r(table)
+
+. local cnames : colfullnames E
+
+. local k = colsof(E)
+
+. tempfile ev
+
+. tempname ph
+
+. postfile `ph' int event_time double coef ll ul using "`ev'", replace
+(file /var/folders/fw/4k6cqv395n9271k_qmms_nv00000gn/T//St71135.000001 not
+    found)
+
+. forvalues j = 1/`k' {
+  2.     local cname : word `j' of `cnames'
+  3.     local et = .
+  4.     if regexm("`cname'", "^tm([0-9]+)$") local et = -real(regexs(1))
+  5.     else if regexm("`cname'", "^tp([0-9]+)$") local et = real(regexs(1))
+  6.     else continue
+  7.     post `ph' (`et') (E[1,`j']) (E[5,`j']) (E[6,`j'])
+  8. }
+
+. postclose `ph'
+
+. 
+. use "`ev'", clear
+
+. sort event_time
+
+. 
+. local n = _N + 1
+
+. set obs `n'
+Number of observations (_N) was 15, now 16.
+
+. replace event_time = -1 in `n'
+(1 real change made)
+
+. replace coef = 0 in `n'
+(1 real change made)
+
+. replace ll = 0 in `n'
+(1 real change made)
+
+. replace ul = 0 in `n'
+(1 real change made)
+
+. sort event_time
+
+. 
+. save "`out_event'/event_`model_stub'.dta", replace
+file
+    /Users/sahaj/Desktop/honours_thesis/replication_package/output/50_robustn
+    > ess/scheduled_time/event/event_scheduled_time_maincov_never_dripw.dta
+    saved
+
+. export delimited using "`out_event'/event_`model_stub'.csv", replace
+file /Users/sahaj/Desktop/honours_thesis/replication_package/output/50_robustne
+> ss/scheduled_time/event/event_scheduled_time_maincov_never_dripw.csv saved
+
+. 
+. twoway ///
+>     (rarea ul ll event_time, color(gs8%40) lwidth(none)) ///
+>     (connected coef event_time, sort lcolor(gs4) mcolor(gs4) msymbol(O) msize
+> (small) lwidth(medthick)), ///
+>     yline(0, lcolor(gs6) lpattern(solid)) ///
+>     xline(0, lcolor(gs10) lpattern(shortdash)) ///
+>     xlabel(-${wpre_main}(2)${wpost_main}, labsize(medium)) ///
+>     ylabel(, labsize(medium)) ///
+>     xtitle("Quarters Relative to Frontier's Entry", size(medlarge)) ///
+>     ytitle("Estimated Treatment Effect (Minutes)", size(medlarge)) ///
+>     legend(off) ///
+>     graphregion(color(white)) plotregion(color(white)) bgcolor(white) ///
+>     xsize(12) ysize(8)
+
+. 
+. graph export "`plots_dir'/es_`model_stub'.pdf", replace
+file
+    /Users/sahaj/Desktop/honours_thesis/replication_package/output/50_robustn
+    > ess/scheduled_time/plots/es_scheduled_time_maincov_never_dripw.pdf
+    saved as PDF format
+
+. 
+end of do-file
+.     do "${package_root}/code/50_robustness/02_concurrent_carriers.do"
+
+. * Concurrent-carrier robustness at the route-quarter level.
+. version 18
+
+. clear all
+
+. set more off
+
+. 
+. do "${package_root}/code/shared/paths.do"
+
+. *****************************************************************************
+> ***
+. * replication_package/code/shared/paths.do
+. * Central package paths, output roots, and thesis-analysis specs.
+. *****************************************************************************
+> ***
+. 
+. version 18
+
+. 
+. if `"$package_root"' == "" {
+.     global package_root `"`c(pwd)'"'
+. }
+
+. 
+. global repo_root = subinstr("$package_root", "/replication_package", "", .)
+
+. 
+. global code_root   "${package_root}/code"
+
+. global shared_code_dir "${code_root}/shared"
+
+. 
+. global data_root   "${package_root}/data"
+
+. global input_dir   "${data_root}/final"
+
+. global raw_data_dir "${data_root}/raw"
+
+. global intermediate_data_dir "${data_root}/intermediate"
+
+. 
+. global output_dir   "${package_root}/output"
+
+. global logs_dir     "${output_dir}/logs"
+
+. global datawork_dir "${output_dir}/shared/data_work"
+
+. global results_main "${output_dir}/20_main_results"
+
+. global results_het  "${output_dir}/40_heterogeneity"
+
+. global results_rob  "${output_dir}/50_robustness"
+
+. global results_sum  "${output_dir}/10_summary_background"
+
+. 
+. capture mkdir "${output_dir}"
+
+. capture mkdir "${logs_dir}"
+
+. capture mkdir "${datawork_dir}"
+
+. capture mkdir "${results_main}"
+
+. capture mkdir "${results_het}"
+
+. capture mkdir "${results_rob}"
+
+. capture mkdir "${results_sum}"
+
+. 
+. * -------------------------- CORE PANEL VARS --------------------------------
+> --
+. global ivar panel_id
+
+. global tvar time_period
+
+. global gvar first_treat
+
+. global clustvar route_id
+
+. 
+. * ------------------------- BASE SAMPLE FILTER ------------------------------
+> --
+. global base_sample "(is_never_f9_route == 1 | is_f9_entry_route == 1)"
+
+. 
+. * ----------------------------- OUTCOMES ------------------------------------
+> --
+. global outcomes_main "ln_average_fare average_fare fare_ratio_90_10 total_sea
+> ts total_departures_performed load_factor departure_delay arrival_delay delay
+> _15 arrival_15 cancellation"
+
+. global outcomes_no_covars "ln_average_fare average_fare fare_ratio_90_10 tota
+> l_seats total_departures_performed load_factor departure_delay arrival_delay 
+> delay_15 arrival_15 cancellation"
+
+. global outcomes_fare_percentiles "fare_p10 fare_p25 fare_p75 fare_p90"
+
+. global outcomes_carrier_type "ln_average_fare fare_ratio_90_10 total_departur
+> es_performed total_seats load_factor"
+
+. global outcomes_robust_key "ln_average_fare total_departures_performed arriva
+> l_delay"
+
+. 
+. * -------------------------- COVARIATE SPECS --------------------------------
+> --
+. global covars_none ""
+
+. global covars_small "average_dist route_hhi ln_geo_mean_pop ln_geo_mean_incom
+> e origin_leisure_share_emp dest_leisure_share_emp big_city_route hub_route"
+
+. global covars_large "average_dist route_hhi route_capacity_passengers ln_geo_
+> mean_pop ln_geo_mean_income origin_leisure_share_emp dest_leisure_share_emp b
+> ig_city_route any_lcc_route hub_route"
+
+. 
+. global covar_spec_main "small"
+
+. global covar_spec_het  "small"
+
+. 
+. * -------------------------- CARRIER SUBGROUPS ------------------------------
+> --
+. global legacy_filter `"inlist(carrier, "AA", "DL", "UA", "US", "AS", "CO")"'
+
+. global lcc_filter    `"inlist(carrier, "WN", "B6", "FL", "VX")"'
+
+. global ulcc_filter   `"inlist(carrier, "NK", "G4")"'
+
+. 
+. * ------------------------- STANDARDIZED SETTINGS ---------------------------
+> ---
+. global seed_std 240422
+
+. global wb_reps 999
+
+. global wpre_main 6
+
+. global wpost_main 8
+
+. global wpre_delay 6
+
+. global wpost_quality 8
+
+. 
+end of do-file
+
+. set seed ${seed_std}
+
+. 
+. local out_root "${results_rob}/concurrent_carriers"
+
+. local models_dir "`out_root'/models"
+
+. local plots_dir "`out_root'/plots"
+
+. local event_dir "`out_root'/event"
+
+. 
+. capture mkdir "`out_root'"
+
+. capture mkdir "`models_dir'"
+
+. capture mkdir "`plots_dir'"
+
+. capture mkdir "`event_dir'"
+
+. 
+. capture program drop run_carrier_event
+
+. program define run_carrier_event
+  1.     syntax varname, modelstub(string) gtitle(string) saveas(string) modeld
+> ir(string) eventdir(string)
+  2. 
+.     capture drop route_cluster_id
+  3.     gen long route_cluster_id = route_id
+  4. 
+.     csdid2 `varlist' ${covars_small}, ///
+>         ivar(route_id) time(time_period) gvar(first_treat) ///
+>         method(dripw) cluster(route_cluster_id) short
+  5.     estimates save "`modeldir'/`modelstub'", replace
+  6. 
+.     estat simple, wboot reps(${wb_reps}) rseed(${seed_std})
+  7.     estat event, window(-${wpre_main} ${wpost_main}) wboot reps(${wb_reps}
+> ) rseed(${seed_std})
+  8. 
+.     matrix E = r(table)
+  9.     local cnames : colfullnames E
+ 10.     local k = colsof(E)
+ 11. 
+.     tempfile ev_tmp
+ 12.     tempname pev
+ 13.     postfile `pev' int event_time double coef se ll ul using "`ev_tmp'", r
+> eplace
+ 14.     forvalues j = 1/`k' {
+ 15.         local cname : word `j' of `cnames'
+ 16.         local et = .
+ 17.         if      regexm("`cname'", "^tm([0-9]+)$") local et = -real(regexs(
+> 1))
+ 18.         else if regexm("`cname'", "^tp([0-9]+)$") local et =  real(regexs(
+> 1))
+ 19.         else continue
+ 20.         post `pev' (`et') (E[1,`j']) (E[2,`j']) (E[5,`j']) (E[6,`j'])
+ 21.     }
+ 22.     postclose `pev'
+ 23. 
+.     preserve
+ 24.         use "`ev_tmp'", clear
+ 25.         sort event_time
+ 26.         local n = _N + 1
+ 27.         set obs `n'
+ 28.         replace event_time = -1 in `n'
+ 29.         replace coef = 0 in `n'
+ 30.         replace se = 0 in `n'
+ 31.         replace ll = 0 in `n'
+ 32.         replace ul = 0 in `n'
+ 33.         sort event_time
+ 34.         save "`eventdir'/event_`modelstub'.dta", replace
+ 35.         export delimited using "`eventdir'/event_`modelstub'.csv", replace
+ 36. 
+.         twoway ///
+>             (rarea ul ll event_time, color(gs8%40) lwidth(none)) ///
+>             (connected coef event_time, sort lcolor(gs4) mcolor(gs4) msymbol(
+> O) msize(small) lwidth(medthick)), ///
+>             yline(0, lcolor(gs6) lpattern(solid)) ///
+>             xline(0, lcolor(gs10) lpattern(shortdash)) ///
+>             xlabel(-${wpre_main}(2)${wpost_main}) ///
+>             xtitle("Quarters Relative to Frontier Entry") ///
+>             ytitle("ATT (number of carriers)") ///
+>             title("`gtitle'", size(medium) color(black) margin(b=3)) ///
+>             graphregion(color(white)) plotregion(color(white)) legend(off)
+ 37. 
+.         graph export "`saveas'", replace as(pdf)
+ 38.     restore
+ 39. 
+.     drop route_cluster_id
+ 40. end
+
+. 
+. use "${input_dir}/final_dataset.dta", clear
+
+. keep if is_f9_entry_route == 1 | is_never_f9_route == 1
+(16,437 observations deleted)
+
+. 
+. capture drop ln_geo_mean_pop ln_geo_mean_income
+
+. gen double ln_geo_mean_pop    = 0.5 * (log(origin_cainc_pop) + log(dest_cainc
+> _pop))
+
+. gen double ln_geo_mean_income = 0.5 * (log(origin_cainc_per_capita_income) + 
+> log(dest_cainc_per_capita_income))
+
+. 
+. capture drop origin_big_city dest_big_city big_city_route
+
+. 
+. preserve
+
+.     keep origin time_period origin_cainc_pop
+
+.     duplicates drop
+
+Duplicates in terms of all variables
+
+(193,034 observations deleted)
+
+.     gsort time_period -origin_cainc_pop origin
+
+.     by time_period: gen int __orig_rank = _n
+
+.     gen byte origin_big_city = (__orig_rank <= 30) if !missing(origin_cainc_p
+> op)
+
+.     keep origin time_period origin_big_city
+
+.     tempfile orig_bc
+
+.     save `orig_bc'
+file /var/folders/fw/4k6cqv395n9271k_qmms_nv00000gn/T//St71135.000002 saved
+    as .dta format
+
+. restore
+
+. merge m:1 origin time_period using `orig_bc', nogen keep(master match)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                             0
+    Matched                           202,665  
+    -----------------------------------------
+
+. 
+. preserve
+
+.     keep dest time_period dest_cainc_pop
+
+.     duplicates drop
+
+Duplicates in terms of all variables
+
+(193,057 observations deleted)
+
+.     gsort time_period -dest_cainc_pop dest
+
+.     by time_period: gen int __dest_rank = _n
+
+.     gen byte dest_big_city = (__dest_rank <= 30) if !missing(dest_cainc_pop)
+
+.     keep dest time_period dest_big_city
+
+.     tempfile dest_bc
+
+.     save `dest_bc'
+file /var/folders/fw/4k6cqv395n9271k_qmms_nv00000gn/T//St71135.000004 saved
+    as .dta format
+
+. restore
+
+. merge m:1 dest time_period using `dest_bc', nogen keep(master match)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                             0
+    Matched                           202,665  
+    -----------------------------------------
+
+. 
+. gen byte big_city_route = (origin_big_city == 1 & dest_big_city == 1)
+
+. replace big_city_route = . if missing(origin_big_city) | missing(dest_big_cit
+> y)
+(0 real changes made)
+
+. 
+. collapse ///
+>     (max)   n_carriers n_carriers_excl_frontier first_treat ///
+>     (first) average_dist route_hhi ///
+>     (first) ln_geo_mean_pop ln_geo_mean_income ///
+>     (first) origin_leisure_share_emp dest_leisure_share_emp ///
+>     (first) big_city_route hub_route, ///
+>     by(route time_period)
+
+. 
+. capture confirm variable route_id
+
+. if _rc != 0 encode route, gen(route_id)
+
+. 
+. run_carrier_event n_carriers, ///
+>     modelstub("n_carriers_all_maincov_never_dripw") ///
+>     gtitle("(a) All carriers (including Frontier)") ///
+>     saveas("`plots_dir'/es_n_carriers_all_maincov_never_dripw.pdf") ///
+>     modeldir("`models_dir'") ///
+>     eventdir("`event_dir'")
+Using method dripw
+Panel is not balanced
+Will use observations with Pair balanced (observed at t0 and t1)
+----+--- 1 ---+--- 2 ---+--- 3 ---+--- 4 ---+--- 5 
+....x......xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx    50
+xxxxxxxxxxxxxxxxxxxx..............................   100
+..................................................   150
+..................................................   200
+..................................................   250
+.........xx.......................................   300
+..................................................   350
+...................................xxxxxx......xxx   400
+xxxxxxxxxxxxxxxxxxxx..............................   450
+.......xxxxxxxxxx....xxxxxxxxxxxxxxxxxxx..........   500
+...........................................xxxxxxx   550
+xxxxxxxxxx........................................   600
+...........................................xxxxxx.   650
+...............file /Users/sahaj/Desktop/honours_thesis/replication_package/out
+> put/50_robustness/concurrent_carriers/models/n_carriers_all_maincov_never_dri
+> pw.ster saved
+---------------------------------------------------------------------
+            | Coefficient  Std. err.      t      [95% conf. interval]
+------------+--------------------------------------------------------
+  SimpleATT |   .7198489     .03983    18.07     .6413699     .798328
+---------------------------------------------------------------------
+WildBootstrap Standard errors
+with 999 Repetitions
+---------------------------------------------------------------------
+            | Coefficient  Std. err.      t      [95% conf. interval]
+------------+--------------------------------------------------------
+    Pre_avg |   .0021412   .0074542     0.29    -.0187267    .0230091
+   Post_avg |   .7634997   .0319418    23.90     .6740788    .8529205
+        tm6 |   .0029805   .0224053     0.13    -.0597429    .0657038
+        tm5 |   .0086638   .0254376     0.34    -.0625485    .0798761
+        tm4 |   .0193271   .0238586     0.81    -.0474648    .0861191
+        tm3 |   .0025966   .0225909     0.11    -.0606465    .0658397
+        tm2 |  -.0426084   .0234377    -1.82     -.108222    .0230052
+        tm1 |   .0218874   .0291762     0.75    -.0597911     .103566
+        tp0 |   1.019571   .0237752    42.88     .9530123    1.086129
+        tp1 |   .9806025   .0315341    31.10     .8923231    1.068882
+        tp2 |   .7304749   .0384172    19.01     .6229262    .8380236
+        tp3 |    .601149   .0432053    13.91     .4801962    .7221019
+        tp4 |   .8042636   .0491554    16.36     .6666536    .9418736
+        tp5 |   .7950544   .0465753    17.07     .6646673    .9254415
+        tp6 |   .5928752    .049619    11.95     .4539674     .731783
+        tp7 |   .6148361   .0469884    13.08     .4832924    .7463798
+        tp8 |   .7326706   .0528094    13.87     .5848313    .8805099
+---------------------------------------------------------------------
+WildBootstrap Standard errors
+with 999 Repetitions
+(file /var/folders/fw/4k6cqv395n9271k_qmms_nv00000gn/T//St71135.000005 not
+    found)
+Number of observations (_N) was 15, now 16.
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+file
+    /Users/sahaj/Desktop/honours_thesis/replication_package/output/50_robustn
+    > ess/concurrent_carriers/event/event_n_carriers_all_maincov_never_dripw.
+    > dta saved
+file /Users/sahaj/Desktop/honours_thesis/replication_package/output/50_robustne
+> ss/concurrent_carriers/event/event_n_carriers_all_maincov_never_dripw.csv sav
+> ed
+file
+    /Users/sahaj/Desktop/honours_thesis/replication_package/output/50_robustn
+    > ess/concurrent_carriers/plots/es_n_carriers_all_maincov_never_dripw.pdf
+    saved as PDF format
+
+. 
+. run_carrier_event n_carriers_excl_frontier, ///
+>     modelstub("n_carriers_excl_frontier_maincov_never_dripw") ///
+>     gtitle("(b) Carriers excluding Frontier") ///
+>     saveas("`plots_dir'/es_n_carriers_excl_frontier.pdf") ///
+>     modeldir("`models_dir'") ///
+>     eventdir("`event_dir'")
+Using method dripw
+Panel is not balanced
+Will use observations with Pair balanced (observed at t0 and t1)
+----+--- 1 ---+--- 2 ---+--- 3 ---+--- 4 ---+--- 5 
+....x......xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx    50
+xxxxxxxxxxxxxxxxxxxx..............................   100
+..................................................   150
+..................................................   200
+..................................................   250
+.........xx.......................................   300
+..................................................   350
+...................................xxxxxx......xxx   400
+xxxxxxxxxxxxxxxxxxxx..............................   450
+.......xxxxxxxxxx....xxxxxxxxxxxxxxxxxxx..........   500
+...........................................xxxxxxx   550
+xxxxxxxxxx........................................   600
+...........................................xxxxxx.   650
+...............file /Users/sahaj/Desktop/honours_thesis/replication_package/out
+> put/50_robustness/concurrent_carriers/models/n_carriers_excl_frontier_maincov
+> _never_dripw.ster saved
+---------------------------------------------------------------------
+            | Coefficient  Std. err.      t      [95% conf. interval]
+------------+--------------------------------------------------------
+  SimpleATT |   .0916844   .0356359     2.57     .0221895    .1611792
+---------------------------------------------------------------------
+WildBootstrap Standard errors
+with 999 Repetitions
+---------------------------------------------------------------------
+            | Coefficient  Std. err.      t      [95% conf. interval]
+------------+--------------------------------------------------------
+    Pre_avg |   .0021412   .0074542     0.29    -.0191317    .0234141
+   Post_avg |   .0605268   .0281564     2.15    -.0198265    .1408801
+        tm6 |   .0029805   .0224053     0.13    -.0609602    .0669212
+        tm5 |   .0086638   .0254376     0.34    -.0639306    .0812582
+        tm4 |   .0193271   .0238586     0.81    -.0487611    .0874154
+        tm3 |   .0025966   .0225909     0.11     -.061874    .0670672
+        tm2 |  -.0426084   .0234377    -1.82    -.1094954    .0242786
+        tm1 |   .0218874   .0291762     0.75    -.0613764    .1051513
+        tp0 |   .0195707   .0237752     0.82    -.0482794    .0874209
+        tp1 |   .0309623   .0319567     0.97    -.0602366    .1221611
+        tp2 |  -.0491861    .032698    -1.50    -.1425003     .044128
+        tp3 |   .0283335   .0367156     0.77    -.0764464    .1331134
+        tp4 |   .0871904   .0410755     2.12    -.0300318    .2044127
+        tp5 |    .110439   .0371268     2.97     .0044855    .2163925
+        tp6 |   .0518916   .0433695     1.20    -.0718772    .1756605
+        tp7 |   .1295902   .0435119     2.98      .005415    .2537654
+        tp8 |   .1359493   .0450565     3.02     .0073661    .2645325
+---------------------------------------------------------------------
+WildBootstrap Standard errors
+with 999 Repetitions
+(file /var/folders/fw/4k6cqv395n9271k_qmms_nv00000gn/T//St71135.000005 not
+    found)
+Number of observations (_N) was 15, now 16.
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+file
+    /Users/sahaj/Desktop/honours_thesis/replication_package/output/50_robustn
+    > ess/concurrent_carriers/event/event_n_carriers_excl_frontier_maincov_ne
+    > ver_dripw.dta saved
+file /Users/sahaj/Desktop/honours_thesis/replication_package/output/50_robustne
+> ss/concurrent_carriers/event/event_n_carriers_excl_frontier_maincov_never_dri
+> pw.csv saved
+file
+    /Users/sahaj/Desktop/honours_thesis/replication_package/output/50_robustn
+    > ess/concurrent_carriers/plots/es_n_carriers_excl_frontier.pdf saved as
+    PDF format
+
+. 
+. copy "`plots_dir'/es_n_carriers_excl_frontier.pdf" "`plots_dir'/es_n_carriers
+> .pdf", replace
+
+. 
+. di as result ""
+
+
+. di as result "Done. Concurrent-carrier outputs saved under `out_root'."
+Done. Concurrent-carrier outputs saved under /Users/sahaj/Desktop/honours_thesi
+> s/replication_package/output/50_robustness/concurrent_carriers.
+
+. 
+end of do-file
+.     do "${package_root}/code/50_robustness/03_prepare_preulcc_panel.do"
+
+. *****************************************************************************
+> ***
+. * 62_prepare_secondary_preulcc_panel.do
+. * Build secondary analysis panel for pre-ULCC Frontier entries (2011q2-2013q4
+> )
+. * using never-F9 routes as controls.
+. *
+. * Output:
+. *   ${datawork_dir}/analysis_panel_secondary_preulcc.dta
+. *****************************************************************************
+> ***
+. 
+. version 18
+
+. set more off
+
+. 
+. do "${package_root}/code/shared/paths.do"
+
+. *****************************************************************************
+> ***
+. * replication_package/code/shared/paths.do
+. * Central package paths, output roots, and thesis-analysis specs.
+. *****************************************************************************
+> ***
+. 
+. version 18
+
+. 
+. if `"$package_root"' == "" {
+.     global package_root `"`c(pwd)'"'
+. }
+
+. 
+. global repo_root = subinstr("$package_root", "/replication_package", "", .)
+
+. 
+. global code_root   "${package_root}/code"
+
+. global shared_code_dir "${code_root}/shared"
+
+. 
+. global data_root   "${package_root}/data"
+
+. global input_dir   "${data_root}/final"
+
+. global raw_data_dir "${data_root}/raw"
+
+. global intermediate_data_dir "${data_root}/intermediate"
+
+. 
+. global output_dir   "${package_root}/output"
+
+. global logs_dir     "${output_dir}/logs"
+
+. global datawork_dir "${output_dir}/shared/data_work"
+
+. global results_main "${output_dir}/20_main_results"
+
+. global results_het  "${output_dir}/40_heterogeneity"
+
+. global results_rob  "${output_dir}/50_robustness"
+
+. global results_sum  "${output_dir}/10_summary_background"
+
+. 
+. capture mkdir "${output_dir}"
+
+. capture mkdir "${logs_dir}"
+
+. capture mkdir "${datawork_dir}"
+
+. capture mkdir "${results_main}"
+
+. capture mkdir "${results_het}"
+
+. capture mkdir "${results_rob}"
+
+. capture mkdir "${results_sum}"
+
+. 
+. * -------------------------- CORE PANEL VARS --------------------------------
+> --
+. global ivar panel_id
+
+. global tvar time_period
+
+. global gvar first_treat
+
+. global clustvar route_id
+
+. 
+. * ------------------------- BASE SAMPLE FILTER ------------------------------
+> --
+. global base_sample "(is_never_f9_route == 1 | is_f9_entry_route == 1)"
+
+. 
+. * ----------------------------- OUTCOMES ------------------------------------
+> --
+. global outcomes_main "ln_average_fare average_fare fare_ratio_90_10 total_sea
+> ts total_departures_performed load_factor departure_delay arrival_delay delay
+> _15 arrival_15 cancellation"
+
+. global outcomes_no_covars "ln_average_fare average_fare fare_ratio_90_10 tota
+> l_seats total_departures_performed load_factor departure_delay arrival_delay 
+> delay_15 arrival_15 cancellation"
+
+. global outcomes_fare_percentiles "fare_p10 fare_p25 fare_p75 fare_p90"
+
+. global outcomes_carrier_type "ln_average_fare fare_ratio_90_10 total_departur
+> es_performed total_seats load_factor"
+
+. global outcomes_robust_key "ln_average_fare total_departures_performed arriva
+> l_delay"
+
+. 
+. * -------------------------- COVARIATE SPECS --------------------------------
+> --
+. global covars_none ""
+
+. global covars_small "average_dist route_hhi ln_geo_mean_pop ln_geo_mean_incom
+> e origin_leisure_share_emp dest_leisure_share_emp big_city_route hub_route"
+
+. global covars_large "average_dist route_hhi route_capacity_passengers ln_geo_
+> mean_pop ln_geo_mean_income origin_leisure_share_emp dest_leisure_share_emp b
+> ig_city_route any_lcc_route hub_route"
+
+. 
+. global covar_spec_main "small"
+
+. global covar_spec_het  "small"
+
+. 
+. * -------------------------- CARRIER SUBGROUPS ------------------------------
+> --
+. global legacy_filter `"inlist(carrier, "AA", "DL", "UA", "US", "AS", "CO")"'
+
+. global lcc_filter    `"inlist(carrier, "WN", "B6", "FL", "VX")"'
+
+. global ulcc_filter   `"inlist(carrier, "NK", "G4")"'
+
+. 
+. * ------------------------- STANDARDIZED SETTINGS ---------------------------
+> ---
+. global seed_std 240422
+
+. global wb_reps 999
+
+. global wpre_main 6
+
+. global wpost_main 8
+
+. global wpre_delay 6
+
+. global wpost_quality 8
+
+. 
+end of do-file
+
+. 
+. use "${input_dir}/final_dataset.dta", clear
+
+. 
+. * ---------------------------------------------------------------------------
+> --
+. * Define route-level pre-ULCC treatment before incumbent/base restrictions.
+. * A treated route has first Frontier entry in [2011q2, 2013q4].
+. * ---------------------------------------------------------------------------
+> --
+. capture drop route_first_treat
+
+. bysort route: egen int route_first_treat = max(first_treat)
+
+. 
+. preserve
+
+.     keep route time_period year quarter route_first_treat
+
+.     keep if route_first_treat > 0 & time_period == route_first_treat
+(216,924 observations deleted)
+
+.     bysort route: keep if _n == 1
+(1,169 observations deleted)
+
+. 
+.     gen int entry_yq = yq(year, quarter)
+
+.     format entry_yq %tq
+
+.     gen byte treated_preulcc_route = inrange(entry_yq, yq(2011, 2), yq(2013, 
+> 4))
+
+. 
+.     keep route route_first_treat year quarter entry_yq treated_preulcc_route
+
+.     rename year entry_year
+
+.     rename quarter entry_quarter
+
+. 
+.     tempfile preulcc_map
+
+.     save `preulcc_map'
+file /var/folders/fw/4k6cqv395n9271k_qmms_nv00000gn/T//St71135.000002 saved
+    as .dta format
+
+. restore
+
+. 
+. merge m:1 route using `preulcc_map', nogen keep(master match)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                       166,649
+        from master                   166,649  
+        from using                          0  
+
+    Matched                            52,453  
+    -----------------------------------------
+
+. replace treated_preulcc_route = 0 if missing(treated_preulcc_route)
+(166,649 real changes made)
+
+. 
+. * ---------------------------------------------------------------------------
+> --
+. * Secondary sample: incumbent observations on pre-ULCC treated routes +
+. * never-F9 controls only.
+. * ---------------------------------------------------------------------------
+> --
+. drop if carrier == "F9"
+(9,374 observations deleted)
+
+. keep if treated_preulcc_route == 1 | is_never_f9_route == 1
+(38,455 observations deleted)
+
+. 
+. * Secondary treatment timing for CSDID
+. capture drop gvar_preulcc
+
+. gen int gvar_preulcc = 0
+
+. replace gvar_preulcc = route_first_treat if treated_preulcc_route == 1
+(4,624 real changes made)
+
+. 
+. count if treated_preulcc_route == 1 & (gvar_preulcc <= 0 | missing(gvar_preul
+> cc))
+  0
+
+. if r(N) > 0 {
+.     di as error "Invalid gvar_preulcc for treated_preulcc_route observations.
+> "
+.     exit 459
+. }
+
+. 
+. label var treated_preulcc_route "Route first F9 entry in 2012q1-2013q4"
+
+. label var gvar_preulcc "Treatment cohort (pre-ULCC window); 0=never-F9 contro
+> l"
+
+. 
+. * Ensure panel IDs exist and are stable
+. capture confirm variable panel_id
+
+. if _rc != 0 {
+.     encode carrier_route, gen(panel_id)
+. }
+
+. 
+. capture confirm variable route_id
+
+. if _rc != 0 {
+.     encode route, gen(route_id)
+. }
+
+. 
+. xtset ${ivar} ${tvar}
+
+Panel variable: panel_id (unbalanced)
+ Time variable: time_period, 1 to 36, but with gaps
+         Delta: 1 unit
+
+. 
+. * Carrier type indicators
+. capture drop is_legacy
+
+. capture drop is_lcc
+
+. capture drop is_ulcc
+
+. gen byte is_legacy = ${legacy_filter}
+
+. gen byte is_lcc    = ${lcc_filter}
+
+. gen byte is_ulcc   = ${ulcc_filter}
+
+. 
+. * Time-varying route-level LCC presence
+. capture drop any_lcc_route
+
+. bysort route ${tvar}: egen byte any_lcc_route = max(is_lcc)
+
+. 
+. * Market size covariates
+. capture drop ln_geo_mean_pop ln_geo_mean_income
+
+. gen double ln_geo_mean_pop    = 0.5 * (log(origin_cainc_pop) + log(dest_cainc
+> _pop))
+
+. gen double ln_geo_mean_income = 0.5 * (log(origin_cainc_per_capita_income) + 
+> log(dest_cainc_per_capita_income))
+
+. 
+. * Leisure employment share controls
+. capture confirm variable origin_leisure_share_emp dest_leisure_share_emp
+
+. if _rc != 0 {
+.     di as error "origin_leisure_share_emp or dest_leisure_share_emp not found
+>  in dataset."
+.     di as error "Re-run final_dataset_cleaned.R before running this script."
+.     exit 1
+. }
+
+. label var origin_leisure_share_emp "Leisure employment share - origin CBSA"
+
+. label var dest_leisure_share_emp   "Leisure employment share - destination CB
+> SA"
+
+. 
+. * Big city route dummy (time-varying top-30 endpoint populations)
+. capture drop origin_big_city dest_big_city big_city_route
+
+. 
+. preserve
+
+.     keep origin time_period origin_cainc_pop
+
+.     duplicates drop
+
+Duplicates in terms of all variables
+
+(161,681 observations deleted)
+
+.     gsort time_period -origin_cainc_pop origin
+
+.     by time_period: gen int __orig_rank = _n
+
+.     gen byte origin_big_city = (__orig_rank <= 30) if !missing(origin_cainc_p
+> op)
+
+.     keep origin time_period origin_big_city
+
+.     tempfile orig_bc
+
+.     save `orig_bc'
+file /var/folders/fw/4k6cqv395n9271k_qmms_nv00000gn/T//St71135.000004 saved
+    as .dta format
+
+. restore
+
+. merge m:1 origin time_period using `orig_bc', nogen keep(master match)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                             0
+    Matched                           171,273  
+    -----------------------------------------
+
+. 
+. preserve
+
+.     keep dest time_period dest_cainc_pop
+
+.     duplicates drop
+
+Duplicates in terms of all variables
+
+(161,706 observations deleted)
+
+.     gsort time_period -dest_cainc_pop dest
+
+.     by time_period: gen int __dest_rank = _n
+
+.     gen byte dest_big_city = (__dest_rank <= 30) if !missing(dest_cainc_pop)
+
+.     keep dest time_period dest_big_city
+
+.     tempfile dest_bc
+
+.     save `dest_bc'
+file /var/folders/fw/4k6cqv395n9271k_qmms_nv00000gn/T//St71135.000006 saved
+    as .dta format
+
+. restore
+
+. merge m:1 dest time_period using `dest_bc', nogen keep(master match)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                             0
+    Matched                           171,273  
+    -----------------------------------------
+
+. 
+. gen byte big_city_route = (origin_big_city == 1 & dest_big_city == 1)
+
+. replace big_city_route = . if missing(origin_big_city) | missing(dest_big_cit
+> y)
+(0 real changes made)
+
+. 
+. label var origin_big_city "Origin CBSA in top 30 by CAINC population"
+
+. label var dest_big_city   "Destination CBSA in top 30 by CAINC population"
+
+. label var big_city_route  "Both endpoints in top-30 CBSA by population"
+
+. 
+. * Log departures outcome
+. capture drop ln_total_departures_performed
+
+. gen double ln_total_departures_performed = .
+(171,273 missing values generated)
+
+. replace ln_total_departures_performed = log(total_departures_performed) if to
+> tal_departures_performed > 0
+(171,273 real changes made)
+
+. 
+. * Save secondary reusable analysis dataset
+. save "${datawork_dir}/analysis_panel_secondary_preulcc.dta", replace
+file
+    /Users/sahaj/Desktop/honours_thesis/replication_package/output/shared/dat
+    > a_work/analysis_panel_secondary_preulcc.dta saved
+
+. 
+. * Diagnostics
+. preserve
+
+.     keep route treated_preulcc_route is_never_f9_route entry_year entry_quart
+> er route_first_treat
+
+.     bysort route: keep if _n == 1
+(165,728 observations deleted)
+
+. 
+.     quietly count if treated_preulcc_route == 1
+
+.     local n_treated = r(N)
+
+.     quietly count if is_never_f9_route == 1
+
+.     local n_control = r(N)
+
+. 
+.     di as text "Secondary panel saved to ${datawork_dir}/analysis_panel_secon
+> dary_preulcc.dta"
+Secondary panel saved to /Users/sahaj/Desktop/honours_thesis/replication_packag
+> e/output/shared/data_work/analysis_panel_secondary_preulcc.dta
+
+.     di as text "Route counts: treated_preulcc=" `n_treated' " | never_f9_cont
+> rols=" `n_control'
+Route counts: treated_preulcc=88 | never_f9_controls=5457
+
+. 
+.     di as text "Pre-ULCC treated route entry-year/quarter distribution:"
+Pre-ULCC treated route entry-year/quarter distribution:
+
+.     capture noisily tab entry_year entry_quarter if treated_preulcc_route == 
+> 1
+
+           |                entry_quarter
+entry_year |         1          2          3          4 |     Total
+-----------+--------------------------------------------+----------
+      2011 |         0         16          4         10 |        30 
+      2012 |        12         16          3          7 |        38 
+      2013 |        12          8          0          0 |        20 
+-----------+--------------------------------------------+----------
+     Total |        24         40          7         17 |        88 
+
+. restore
+
+. 
+. quietly count
+
+. di as text "Observation count: " r(N)
+Observation count: 171273
+
+. 
+end of do-file
+.     do "${package_root}/code/50_robustness/04_preulcc_fares.do"
+
+. * 49_preulcc_lnfare_largecov_allcarriers.do
+. *
+. * Pre-ULCC event study: ln_average_fare
+. * Sample  : All carriers (no restriction)
+. * Covars  : covars_large (10-var, route_capacity_passengers)
+. * Method  : DRIPW, asymptotic SEs, cluster(route_id), no bootstrap
+. * Controls: never-treated (never-F9 routes)
+. * Window  : -6 to +8
+. *
+. *****************************************************************************
+> ***
+. 
+. version 18
+
+. set more off
+
+. 
+. do "${package_root}/code/shared/paths.do"
+
+. *****************************************************************************
+> ***
+. * replication_package/code/shared/paths.do
+. * Central package paths, output roots, and thesis-analysis specs.
+. *****************************************************************************
+> ***
+. 
+. version 18
+
+. 
+. if `"$package_root"' == "" {
+.     global package_root `"`c(pwd)'"'
+. }
+
+. 
+. global repo_root = subinstr("$package_root", "/replication_package", "", .)
+
+. 
+. global code_root   "${package_root}/code"
+
+. global shared_code_dir "${code_root}/shared"
+
+. 
+. global data_root   "${package_root}/data"
+
+. global input_dir   "${data_root}/final"
+
+. global raw_data_dir "${data_root}/raw"
+
+. global intermediate_data_dir "${data_root}/intermediate"
+
+. 
+. global output_dir   "${package_root}/output"
+
+. global logs_dir     "${output_dir}/logs"
+
+. global datawork_dir "${output_dir}/shared/data_work"
+
+. global results_main "${output_dir}/20_main_results"
+
+. global results_het  "${output_dir}/40_heterogeneity"
+
+. global results_rob  "${output_dir}/50_robustness"
+
+. global results_sum  "${output_dir}/10_summary_background"
+
+. 
+. capture mkdir "${output_dir}"
+
+. capture mkdir "${logs_dir}"
+
+. capture mkdir "${datawork_dir}"
+
+. capture mkdir "${results_main}"
+
+. capture mkdir "${results_het}"
+
+. capture mkdir "${results_rob}"
+
+. capture mkdir "${results_sum}"
+
+. 
+. * -------------------------- CORE PANEL VARS --------------------------------
+> --
+. global ivar panel_id
+
+. global tvar time_period
+
+. global gvar first_treat
+
+. global clustvar route_id
+
+. 
+. * ------------------------- BASE SAMPLE FILTER ------------------------------
+> --
+. global base_sample "(is_never_f9_route == 1 | is_f9_entry_route == 1)"
+
+. 
+. * ----------------------------- OUTCOMES ------------------------------------
+> --
+. global outcomes_main "ln_average_fare average_fare fare_ratio_90_10 total_sea
+> ts total_departures_performed load_factor departure_delay arrival_delay delay
+> _15 arrival_15 cancellation"
+
+. global outcomes_no_covars "ln_average_fare average_fare fare_ratio_90_10 tota
+> l_seats total_departures_performed load_factor departure_delay arrival_delay 
+> delay_15 arrival_15 cancellation"
+
+. global outcomes_fare_percentiles "fare_p10 fare_p25 fare_p75 fare_p90"
+
+. global outcomes_carrier_type "ln_average_fare fare_ratio_90_10 total_departur
+> es_performed total_seats load_factor"
+
+. global outcomes_robust_key "ln_average_fare total_departures_performed arriva
+> l_delay"
+
+. 
+. * -------------------------- COVARIATE SPECS --------------------------------
+> --
+. global covars_none ""
+
+. global covars_small "average_dist route_hhi ln_geo_mean_pop ln_geo_mean_incom
+> e origin_leisure_share_emp dest_leisure_share_emp big_city_route hub_route"
+
+. global covars_large "average_dist route_hhi route_capacity_passengers ln_geo_
+> mean_pop ln_geo_mean_income origin_leisure_share_emp dest_leisure_share_emp b
+> ig_city_route any_lcc_route hub_route"
+
+. 
+. global covar_spec_main "small"
+
+. global covar_spec_het  "small"
+
+. 
+. * -------------------------- CARRIER SUBGROUPS ------------------------------
+> --
+. global legacy_filter `"inlist(carrier, "AA", "DL", "UA", "US", "AS", "CO")"'
+
+. global lcc_filter    `"inlist(carrier, "WN", "B6", "FL", "VX")"'
+
+. global ulcc_filter   `"inlist(carrier, "NK", "G4")"'
+
+. 
+. * ------------------------- STANDARDIZED SETTINGS ---------------------------
+> ---
+. global seed_std 240422
+
+. global wb_reps 999
+
+. global wpre_main 6
+
+. global wpost_main 8
+
+. global wpre_delay 6
+
+. global wpost_quality 8
+
+. 
+end of do-file
+
+. set seed ${seed_std}
+
+. 
+. local in_dta   "${datawork_dir}/analysis_panel_secondary_preulcc.dta"
+
+. local out_root "${results_rob}/preulcc_lnfare_largecov_allcarriers"
+
+. local out_ster  "`out_root'/models"
+
+. local out_event "`out_root'/event"
+
+. local plots_dir "`out_root'/plots"
+
+. 
+. capture mkdir "`out_root'"
+
+. capture mkdir "`out_ster'"
+
+. capture mkdir "`out_event'"
+
+. capture mkdir "`plots_dir'"
+
+. 
+. use "`in_dta'", clear
+
+. 
+. di as result "Obs (all carriers): `=_N'"
+Obs (all carriers): 171273
+
+. 
+. quietly count if gvar_preulcc > 0 & !missing(gvar_preulcc)
+
+. local n_treated = r(N)
+
+. quietly count if gvar_preulcc == 0
+
+. local n_control = r(N)
+
+. quietly levelsof route_id if gvar_preulcc > 0 & !missing(gvar_preulcc), local
+> (rt_t)
+
+. quietly levelsof route_id if gvar_preulcc == 0, local(rt_c)
+
+. local n_rt_t : word count `rt_t'
+
+. local n_rt_c : word count `rt_c'
+
+. 
+. di as result "======================================================"
+======================================================
+
+. di as result "PRE-ULCC | ln_average_fare | large covars | all carriers"
+PRE-ULCC | ln_average_fare | large covars | all carriers
+
+. di as result "======================================================"
+======================================================
+
+. di as result "Treated obs:  `n_treated'  |  Treated routes: `n_rt_t'"
+Treated obs:  4624  |  Treated routes: 88
+
+. di as result "Control obs:  `n_control'  |  Control routes: `n_rt_c'"
+Control obs:  166649  |  Control routes: 5457
+
+. di as result "======================================================"
+======================================================
+
+. 
+. capture drop cluster_id
+
+. gen long cluster_id = route_id
+
+. 
+. local model_stub "preulcc_lnfare_largecov_never_dripw"
+
+. 
+. cd "`out_ster'"
+/Users/sahaj/Desktop/honours_thesis/replication_package/output/50_robustness/pr
+> eulcc_lnfare_largecov_allcarriers/models
+
+. csdid2 ln_average_fare ${covars_large}, ///
+>     ivar(${ivar}) time(${tvar}) gvar(gvar_preulcc) ///
+>     method(dripw) cluster(cluster_id) short
+Using method dripw
+Panel is not balanced
+Will use observations with Pair balanced (observed at t0 and t1)
+----+--- 1 ---+--- 2 ---+--- 3 ---+--- 4 ---+--- 5 
+....................................xxxxxxxxxxxxxx    50
+xxxxxxxxxxxxxxxxxxxx..xxxxxxxxxxxxxxxxxxxxxxxxxxxx   100
+xxxxx.............................................   150
+.....................x.........xxxxxxxxxxxxxxxxxxx   200
+xxxxxxxxxx........................................   250
+..............................x...............xxxx   300
+xxx............
+. 
+. if _rc != 0 {
+.     di as error "FAILED (rc=`_rc')"
+FAILED (rc=)
+.     exit `_rc'
+
+end of do-file
+.     do "${package_root}/code/50_robustness/05_preulcc_departures.do"
+
+. * 64_preulcc_seasadj_lndep_smallcov_core.do
+. * Pre-ULCC event study: seasonally-adjusted ln_total_departures_performed
+. * Mirrors Script 47b but residualises on route x quarter-of-year means
+. * before running CSDID (same seasonal adjustment as Script 57).
+. * Sample  : All incumbent carriers in pre-ULCC panel (no core-carrier restric
+> tion)
+. * Covars  : covars_small
+. * Method  : DRIPW, cluster(route_id)
+. * Control : never-treated (never-F9 routes)
+. * Window  : -6 to +8
+. 
+. version 18
+
+. set more off
+
+. 
+. do "${package_root}/code/shared/paths.do"
+
+. *****************************************************************************
+> ***
+. * replication_package/code/shared/paths.do
+. * Central package paths, output roots, and thesis-analysis specs.
+. *****************************************************************************
+> ***
+. 
+. version 18
+
+. 
+. if `"$package_root"' == "" {
+.     global package_root `"`c(pwd)'"'
+. }
+
+. 
+. global repo_root = subinstr("$package_root", "/replication_package", "", .)
+
+. 
+. global code_root   "${package_root}/code"
+
+. global shared_code_dir "${code_root}/shared"
+
+. 
+. global data_root   "${package_root}/data"
+
+. global input_dir   "${data_root}/final"
+
+. global raw_data_dir "${data_root}/raw"
+
+. global intermediate_data_dir "${data_root}/intermediate"
+
+. 
+. global output_dir   "${package_root}/output"
+
+. global logs_dir     "${output_dir}/logs"
+
+. global datawork_dir "${output_dir}/shared/data_work"
+
+. global results_main "${output_dir}/20_main_results"
+
+. global results_het  "${output_dir}/40_heterogeneity"
+
+. global results_rob  "${output_dir}/50_robustness"
+
+. global results_sum  "${output_dir}/10_summary_background"
+
+. 
+. capture mkdir "${output_dir}"
+
+. capture mkdir "${logs_dir}"
+
+. capture mkdir "${datawork_dir}"
+
+. capture mkdir "${results_main}"
+
+. capture mkdir "${results_het}"
+
+. capture mkdir "${results_rob}"
+
+. capture mkdir "${results_sum}"
+
+. 
+. * -------------------------- CORE PANEL VARS --------------------------------
+> --
+. global ivar panel_id
+
+. global tvar time_period
+
+. global gvar first_treat
+
+. global clustvar route_id
+
+. 
+. * ------------------------- BASE SAMPLE FILTER ------------------------------
+> --
+. global base_sample "(is_never_f9_route == 1 | is_f9_entry_route == 1)"
+
+. 
+. * ----------------------------- OUTCOMES ------------------------------------
+> --
+. global outcomes_main "ln_average_fare average_fare fare_ratio_90_10 total_sea
+> ts total_departures_performed load_factor departure_delay arrival_delay delay
+> _15 arrival_15 cancellation"
+
+. global outcomes_no_covars "ln_average_fare average_fare fare_ratio_90_10 tota
+> l_seats total_departures_performed load_factor departure_delay arrival_delay 
+> delay_15 arrival_15 cancellation"
+
+. global outcomes_fare_percentiles "fare_p10 fare_p25 fare_p75 fare_p90"
+
+. global outcomes_carrier_type "ln_average_fare fare_ratio_90_10 total_departur
+> es_performed total_seats load_factor"
+
+. global outcomes_robust_key "ln_average_fare total_departures_performed arriva
+> l_delay"
+
+. 
+. * -------------------------- COVARIATE SPECS --------------------------------
+> --
+. global covars_none ""
+
+. global covars_small "average_dist route_hhi ln_geo_mean_pop ln_geo_mean_incom
+> e origin_leisure_share_emp dest_leisure_share_emp big_city_route hub_route"
+
+. global covars_large "average_dist route_hhi route_capacity_passengers ln_geo_
+> mean_pop ln_geo_mean_income origin_leisure_share_emp dest_leisure_share_emp b
+> ig_city_route any_lcc_route hub_route"
+
+. 
+. global covar_spec_main "small"
+
+. global covar_spec_het  "small"
+
+. 
+. * -------------------------- CARRIER SUBGROUPS ------------------------------
+> --
+. global legacy_filter `"inlist(carrier, "AA", "DL", "UA", "US", "AS", "CO")"'
+
+. global lcc_filter    `"inlist(carrier, "WN", "B6", "FL", "VX")"'
+
+. global ulcc_filter   `"inlist(carrier, "NK", "G4")"'
+
+. 
+. * ------------------------- STANDARDIZED SETTINGS ---------------------------
+> ---
+. global seed_std 240422
+
+. global wb_reps 999
+
+. global wpre_main 6
+
+. global wpost_main 8
+
+. global wpre_delay 6
+
+. global wpost_quality 8
+
+. 
+end of do-file
+
+. set seed ${seed_std}
+
+. 
+. local in_dta   "${datawork_dir}/analysis_panel_secondary_preulcc.dta"
+
+. local out_root "${results_rob}/preulcc_seasadj_lndep_smallcov_core"
+
+. local out_ster  "`out_root'/models"
+
+. local out_event "`out_root'/event"
+
+. local plots_dir "`out_root'/plots"
+
+. 
+. capture mkdir "`out_root'"
+
+. capture mkdir "`out_ster'"
+
+. capture mkdir "`out_event'"
+
+. capture mkdir "`plots_dir'"
+
+. 
+. * -------------------------------------------------------------------------
+. * Step 1: Load and residualise
+. * -------------------------------------------------------------------------
+. use "`in_dta'", clear
+
+. 
+. * Quarter of year (1=Q1 ... 4=Q4)
+. gen byte qoy = mod(${tvar} - 1, 4) + 1
+
+. 
+. * Route x quarter-of-year demeaning (same as Script 57)
+. bysort ${ivar} qoy: egen mean_dep_rq = mean(ln_total_departures_performed)
+
+. gen double ln_dep_seas_adj = ln_total_departures_performed - mean_dep_rq
+
+. drop mean_dep_rq
+
+. 
+. di as result "=== Residualisation complete ==="
+=== Residualisation complete ===
+
+. summarize ln_dep_seas_adj, detail
+
+                       ln_dep_seas_adj
+-------------------------------------------------------------
+      Percentiles      Smallest
+ 1%    -1.415363      -3.110747
+ 5%    -.6986627      -3.052053
+10%    -.3979692      -2.989208       Obs             171,273
+25%    -.1002398      -2.897645       Sum of wgt.     171,273
+
+50%     1.40e-07                      Mean          -3.07e-12
+                        Largest       Std. dev.      .3994712
+75%     .1518413       2.171564
+90%     .4191107       2.242815       Variance       .1595772
+95%     .6101765       2.355062       Skewness      -.9699512
+99%     1.024218       2.447244       Kurtosis        8.55535
+
+. 
+. * Sample summary
+. quietly count if gvar_preulcc > 0 & !missing(gvar_preulcc)
+
+. local n_treated = r(N)
+
+. quietly count if gvar_preulcc == 0
+
+. local n_control = r(N)
+
+. di as result "======================================================"
+======================================================
+
+. di as result "PRE-ULCC | seas-adj ln_departures | SMALL covars | all incumben
+> ts"
+PRE-ULCC | seas-adj ln_departures | SMALL covars | all incumbents
+
+. di as result "======================================================"
+======================================================
+
+. di as result "Treated obs:  `n_treated'"
+Treated obs:  4624
+
+. di as result "Control obs:  `n_control'"
+Control obs:  166649
+
+. di as result "======================================================"
+======================================================
+
+. 
+. * -------------------------------------------------------------------------
+. * Step 2: CSDID2 on seasonally-adjusted outcome
+. * -------------------------------------------------------------------------
+. capture drop cluster_id
+
+. gen long cluster_id = route_id
+
+. 
+. local model_stub "preulcc_seasadj_lndep_maincov_never_dripw"
+
+. 
+. cd "`out_ster'"
+/Users/sahaj/Desktop/honours_thesis/replication_package/output/50_robustness/pr
+> eulcc_seasadj_lndep_smallcov_core/models
+
+. capture noisily csdid2 ln_dep_seas_adj ${covars_small}, ///
+>     ivar(${ivar}) time(${tvar}) gvar(gvar_preulcc) ///
+>     method(dripw) cluster(cluster_id) short
+Using method dripw
+Panel is not balanced
+Will use observations with Pair balanced (observed at t0 and t1)
+----+--- 1 ---+--- 2 ---+--- 3 ---+--- 4 ---+--- 5 
+..................................................    50
+......................xxxxxxxxxxxxxxxxxxxxxxxxxxxx   100
+xxxxx.............................................   150
+..................................................   200
+..................................................   250
+..............................x...............xxxx   300
+xxx............
+. 
+. if _rc != 0 {
+.     di as error "FAILED (rc=`_rc')"
+.     exit _rc
+. }
+
+. 
+. estimates save "`model_stub'", replace
+file preulcc_seasadj_lndep_maincov_never_dripw.ster saved
+
+. 
+. di as result _newline "=== OVERALL ATT ==="
+
+=== OVERALL ATT ===
+
+. estat simple, wboot reps(${wb_reps}) rseed(${seed_std})
+---------------------------------------------------------------------
+            | Coefficient  Std. err.      t      [95% conf. interval]
+------------+--------------------------------------------------------
+  SimpleATT |   -.038667   .0394911    -0.98    -.1170449    .0397109
+---------------------------------------------------------------------
+WildBootstrap Standard errors
+with 999 Repetitions
+
+. 
+. estat event, window(-${wpre_main} ${wpost_main}) wboot reps(${wb_reps}) rseed
+> (${seed_std})
+---------------------------------------------------------------------
+            | Coefficient  Std. err.      t      [95% conf. interval]
+------------+--------------------------------------------------------
+    Pre_avg |  -.0081352   .0153596    -0.53    -.0508736    .0346031
+   Post_avg |  -.0569689   .0414812    -1.37    -.1723911    .0584532
+        tm6 |  -.0561396   .0511681    -1.10    -.1985159    .0862367
+        tm5 |  -.0242618   .0662608    -0.37    -.2086338    .1601102
+        tm4 |   .0820513   .0761845     1.08    -.1299336    .2940362
+        tm3 |   .0753165   .0669719     1.12    -.1110341    .2616671
+        tm2 |  -.0748519   .0360617    -2.08    -.1751942    .0254904
+        tm1 |  -.0509258   .0477672    -1.07    -.1838389    .0819872
+        tp0 |  -.0123314   .0408313    -0.30    -.1259452    .1012825
+        tp1 |  -.0404921   .0569881    -0.71    -.1990627    .1180784
+        tp2 |  -.0666468   .0533175    -1.25    -.2150038    .0817102
+        tp3 |   .0093235   .0532214     0.18    -.1387659     .157413
+        tp4 |  -.0725259   .0534002    -1.36    -.2211128    .0760611
+        tp5 |  -.1005811   .0616233    -1.63     -.272049    .0708869
+        tp6 |  -.1552749   .0548045    -2.83    -.3077693   -.0027804
+        tp7 |  -.0269644   .0578958    -0.47    -.1880607    .1341319
+        tp8 |  -.0472274   .0635495    -0.74     -.224055    .1296002
+---------------------------------------------------------------------
+WildBootstrap Standard errors
+with 999 Repetitions
+
+. 
+. * -------------------------------------------------------------------------
+. * Step 3: Extract event study and plot
+. * -------------------------------------------------------------------------
+. matrix E = r(table)
+
+. local cnames : colfullnames E
+
+. local k = colsof(E)
+
+. 
+. tempfile ev_tmp
+
+. tempname pev
+
+. postfile `pev' int event_time double coef ll ul using "`ev_tmp'", replace
+(file /var/folders/fw/4k6cqv395n9271k_qmms_nv00000gn/T//St71135.000001 not
+    found)
+
+. forvalues j = 1/`k' {
+  2.     local cname : word `j' of `cnames'
+  3.     local et = .
+  4.     if      regexm("`cname'", "^tm([0-9]+)$") local et = -real(regexs(1))
+  5.     else if regexm("`cname'", "^tp([0-9]+)$") local et =  real(regexs(1))
+  6.     else continue
+  7.     post `pev' (`et') (E[1,`j']) (E[5,`j']) (E[6,`j'])
+  8. }
+
+. postclose `pev'
+
+. 
+. use "`ev_tmp'", clear
+
+. sort event_time
+
+. 
+. local n = _N + 1
+
+. set obs `n'
+Number of observations (_N) was 15, now 16.
+
+. replace event_time = -1 in `n'
+(1 real change made)
+
+. replace coef = 0 in `n'
+(1 real change made)
+
+. replace ll = 0 in `n'
+(1 real change made)
+
+. replace ul = 0 in `n'
+(1 real change made)
+
+. sort event_time
+
+. 
+. gen double coef_plot = coef * 100
+
+. gen double ll_plot   = ll   * 100
+
+. gen double ul_plot   = ul   * 100
+
+. 
+. save "`out_event'/event_`model_stub'.dta", replace
+file
+    /Users/sahaj/Desktop/honours_thesis/replication_package/output/50_robustn
+    > ess/preulcc_seasadj_lndep_smallcov_core/event/event_preulcc_seasadj_lnd
+    > ep_maincov_never_dripw.dta saved
+
+. export delimited using "`out_event'/event_`model_stub'.csv", replace
+file /Users/sahaj/Desktop/honours_thesis/replication_package/output/50_robustne
+> ss/preulcc_seasadj_lndep_smallcov_core/event/event_preulcc_seasadj_lndep_main
+> cov_never_dripw.csv saved
+
+. 
+. quietly sum ll_plot
+
+. local ymin = floor(r(min)/5)*5 - 5
+
+. quietly sum ul_plot
+
+. local ymax = ceil(r(max)/5)*5  + 5
+
+. 
+. twoway ///
+>     (rarea ul_plot ll_plot event_time, color(gs8%40) lwidth(none)) ///
+>     (connected coef_plot event_time, sort lcolor(gs4) mcolor(gs4) ///
+>         msymbol(O) msize(small) lwidth(medthick)), ///
+>     yline(0, lcolor(gs6) lpattern(solid)) ///
+>     xline(0, lcolor(gs10) lpattern(shortdash)) ///
+>     xlabel(-${wpre_main}(2)${wpost_main}, labsize(medium)) ///
+>     ylabel(`ymin'(5)`ymax', labsize(medium)) ///
+>     yscale(range(`ymin' `ymax')) ///
+>     xtitle("Quarters Relative to Frontier's Entry", size(medlarge)) ///
+>     ytitle("Estimated Treatment Effect (%)", size(medlarge)) ///
+>     legend(off) ///
+>     graphregion(color(white)) plotregion(color(white)) bgcolor(white) ///
+>     xsize(12) ysize(8)
+
+. 
+. graph export "`plots_dir'/es_`model_stub'.pdf", replace
+file
+    /Users/sahaj/Desktop/honours_thesis/replication_package/output/50_robustn
+    > ess/preulcc_seasadj_lndep_smallcov_core/plots/es_preulcc_seasadj_lndep_
+    > maincov_never_dripw.pdf saved as PDF format
+
+. di as result "DONE: `model_stub'"
+DONE: preulcc_seasadj_lndep_maincov_never_dripw
+
+. 
+end of do-file
+.     do "${package_root}/code/50_robustness/06_basic_economy_southwest.do"
+
+. * 98a_southwest_only_fare_csdid2.do
+. * Basic economy robustness: Southwest Airlines never introduced basic economy
+> .
+. * Restricts sample to Southwest (WN) only and re-estimates the main fare spec
+> .
+. * If the fare ATT is similar to the full-sample estimate (-7.2%), basic econo
+> my
+. * rollout by other carriers is not driving the main result.
+. *
+. * Uses the standardized csdid2 + wild-bootstrap package settings.
+. version 18
+
+. set more off
+
+. do "${package_root}/code/shared/paths.do"
+
+. *****************************************************************************
+> ***
+. * replication_package/code/shared/paths.do
+. * Central package paths, output roots, and thesis-analysis specs.
+. *****************************************************************************
+> ***
+. 
+. version 18
+
+. 
+. if `"$package_root"' == "" {
+.     global package_root `"`c(pwd)'"'
+. }
+
+. 
+. global repo_root = subinstr("$package_root", "/replication_package", "", .)
+
+. 
+. global code_root   "${package_root}/code"
+
+. global shared_code_dir "${code_root}/shared"
+
+. 
+. global data_root   "${package_root}/data"
+
+. global input_dir   "${data_root}/final"
+
+. global raw_data_dir "${data_root}/raw"
+
+. global intermediate_data_dir "${data_root}/intermediate"
+
+. 
+. global output_dir   "${package_root}/output"
+
+. global logs_dir     "${output_dir}/logs"
+
+. global datawork_dir "${output_dir}/shared/data_work"
+
+. global results_main "${output_dir}/20_main_results"
+
+. global results_het  "${output_dir}/40_heterogeneity"
+
+. global results_rob  "${output_dir}/50_robustness"
+
+. global results_sum  "${output_dir}/10_summary_background"
+
+. 
+. capture mkdir "${output_dir}"
+
+. capture mkdir "${logs_dir}"
+
+. capture mkdir "${datawork_dir}"
+
+. capture mkdir "${results_main}"
+
+. capture mkdir "${results_het}"
+
+. capture mkdir "${results_rob}"
+
+. capture mkdir "${results_sum}"
+
+. 
+. * -------------------------- CORE PANEL VARS --------------------------------
+> --
+. global ivar panel_id
+
+. global tvar time_period
+
+. global gvar first_treat
+
+. global clustvar route_id
+
+. 
+. * ------------------------- BASE SAMPLE FILTER ------------------------------
+> --
+. global base_sample "(is_never_f9_route == 1 | is_f9_entry_route == 1)"
+
+. 
+. * ----------------------------- OUTCOMES ------------------------------------
+> --
+. global outcomes_main "ln_average_fare average_fare fare_ratio_90_10 total_sea
+> ts total_departures_performed load_factor departure_delay arrival_delay delay
+> _15 arrival_15 cancellation"
+
+. global outcomes_no_covars "ln_average_fare average_fare fare_ratio_90_10 tota
+> l_seats total_departures_performed load_factor departure_delay arrival_delay 
+> delay_15 arrival_15 cancellation"
+
+. global outcomes_fare_percentiles "fare_p10 fare_p25 fare_p75 fare_p90"
+
+. global outcomes_carrier_type "ln_average_fare fare_ratio_90_10 total_departur
+> es_performed total_seats load_factor"
+
+. global outcomes_robust_key "ln_average_fare total_departures_performed arriva
+> l_delay"
+
+. 
+. * -------------------------- COVARIATE SPECS --------------------------------
+> --
+. global covars_none ""
+
+. global covars_small "average_dist route_hhi ln_geo_mean_pop ln_geo_mean_incom
+> e origin_leisure_share_emp dest_leisure_share_emp big_city_route hub_route"
+
+. global covars_large "average_dist route_hhi route_capacity_passengers ln_geo_
+> mean_pop ln_geo_mean_income origin_leisure_share_emp dest_leisure_share_emp b
+> ig_city_route any_lcc_route hub_route"
+
+. 
+. global covar_spec_main "small"
+
+. global covar_spec_het  "small"
+
+. 
+. * -------------------------- CARRIER SUBGROUPS ------------------------------
+> --
+. global legacy_filter `"inlist(carrier, "AA", "DL", "UA", "US", "AS", "CO")"'
+
+. global lcc_filter    `"inlist(carrier, "WN", "B6", "FL", "VX")"'
+
+. global ulcc_filter   `"inlist(carrier, "NK", "G4")"'
+
+. 
+. * ------------------------- STANDARDIZED SETTINGS ---------------------------
+> ---
+. global seed_std 240422
+
+. global wb_reps 999
+
+. global wpre_main 6
+
+. global wpost_main 8
+
+. global wpre_delay 6
+
+. global wpost_quality 8
+
+. 
+end of do-file
+
+. set seed ${seed_std}
+
+. 
+. local in_dta   "${datawork_dir}/analysis_panel.dta"
+
+. local out_root "${results_rob}/basic_economy/southwest_only"
+
+. local out_ster  "`out_root'/models"
+
+. local out_event "`out_root'/event"
+
+. local plots_dir "`out_root'/plots"
+
+. local out_summary "`out_root'/summary"
+
+. 
+. capture mkdir "${results_rob}/basic_economy"
+
+. capture mkdir "`out_root'"
+
+. capture mkdir "`out_ster'"
+
+. capture mkdir "`out_event'"
+
+. capture mkdir "`plots_dir'"
+
+. capture mkdir "`out_summary'"
+
+. 
+. * ==========================================================================
+. *  LOAD DATA & RESTRICT TO SOUTHWEST
+. * ==========================================================================
+. 
+. use "`in_dta'", clear
+
+. 
+. * Keep only Southwest Airlines observations
+. keep if carrier == "WN"
+(160,912 observations deleted)
+
+. 
+. di as result "=== Sample after restricting to Southwest (WN) ==="
+=== Sample after restricting to Southwest (WN) ===
+
+. di as result "Observations: " _N
+Observations: 36539
+
+. 
+. * Diagnostics: how many treated/control routes have Southwest service?
+. quietly count if is_f9_entry_route == 1
+
+. local n_treated_obs = r(N)
+
+. preserve
+
+.     keep if is_f9_entry_route == 1
+(29,284 observations deleted)
+
+.     bysort route_id: keep if _n == 1
+(6,961 observations deleted)
+
+.     quietly count
+
+.     local n_treated_routes = r(N)
+
+. restore
+
+. preserve
+
+.     keep if is_f9_entry_route == 0
+(7,255 observations deleted)
+
+.     bysort route_id: keep if _n == 1
+(28,010 observations deleted)
+
+.     quietly count
+
+.     local n_control_routes = r(N)
+
+. restore
+
+. 
+. di as result "Treated route-quarters: `n_treated_obs'"
+Treated route-quarters: 7255
+
+. di as result "Unique treated routes with WN presence: `n_treated_routes'"
+Unique treated routes with WN presence: 294
+
+. di as result "Unique control routes with WN presence: `n_control_routes'"
+Unique control routes with WN presence: 1274
+
+. 
+. * Re-set panel structure after subsetting
+. xtset ${ivar} ${tvar}
+
+Panel variable: panel_id (unbalanced)
+ Time variable: time_period, 1 to 36, but with gaps
+         Delta: 1 unit
+
+. 
+. * csdid2 requires cluster variable name to differ from ivar
+. gen long cluster_id = route_id
+
+. 
+. * ==========================================================================
+. *  ESTIMATION: LOG AVERAGE FARE
+. * ==========================================================================
+. 
+. local model_stub "wn_only_lnfare_maincov_never_dripw"
+
+. 
+. di as result _newline "=== CSDID2: Southwest-only, log average fare ==="
+
+=== CSDID2: Southwest-only, log average fare ===
+
+. 
+. cd "`out_ster'"
+/Users/sahaj/Desktop/honours_thesis/replication_package/output/50_robustness/ba
+> sic_economy/southwest_only/models
+
+. csdid2 ln_average_fare ${covars_small}, ///
+>     ivar(${ivar}) time(${tvar}) gvar(${gvar}) ///
+>     method(dripw) cluster(cluster_id) short
+Using method dripw
+Panel is not balanced
+Will use observations with Pair balanced (observed at t0 and t1)
+----+--- 1 ---+--- 2 ---+--- 3 ---+--- 4 ---+--- 5 
+..................................................    50
+..................................................   100
+............................................xxxxxx   150
+xxxxxxxxxxxxxxxx..................................   200
+..................................................   250
+.....................xxxxxxxx.x...xxxxxxxxx.xxxxxx   300
+xxxxxxxx.xxxxxx...xx.xxxxxxxxx.............xxxxxxx   350
+xxx....x.xxxxxxxxxxxxxxxxx........................   400
+................xx......xx.x.xxxx.xxxxxxxxxxxx....   450
+...............................xxx.xxxxxxxxx.xxxxx   500
+xxxxxxxxx.x.x.x...xxxxxxxxxxxxx..xxxxx.xxxxxxxxxxx   550
+x
+. 
+. if _rc != 0 {
+.     di as error "ESTIMATION FAILED (rc=`_rc')"
+.     exit `_rc'
+. }
+
+. 
+. estimates save "`model_stub'", replace
+file wn_only_lnfare_maincov_never_dripw.ster saved
+
+. 
+. * --- Overall ATT ---
+. di as result _newline "=== OVERALL ATT: Southwest-only fare effect ==="
+
+=== OVERALL ATT: Southwest-only fare effect ===
+
+. estat simple, wboot reps(${wb_reps}) rseed(${seed_std})
+---------------------------------------------------------------------
+            | Coefficient  Std. err.      t      [95% conf. interval]
+------------+--------------------------------------------------------
+  SimpleATT |  -.0874633   .0084196   -10.39    -.1033823   -.0715442
+---------------------------------------------------------------------
+WildBootstrap Standard errors
+with 999 Repetitions
+
+. matrix A = r(table)
+
+. 
+. * --- Event study ---
+. estat event, window(-${wpre_main} ${wpost_main}) wboot reps(${wb_reps}) rseed
+> (${seed_std})
+---------------------------------------------------------------------
+            | Coefficient  Std. err.      t      [95% conf. interval]
+------------+--------------------------------------------------------
+    Pre_avg |  -.0009404    .001857    -0.51    -.0062585    .0043777
+   Post_avg |  -.0822634   .0075179   -10.94    -.1037933   -.0607335
+        tm6 |  -.0103803   .0059651    -1.74    -.0274634    .0067027
+        tm5 |   .0218061   .0069987     3.12      .001763    .0418491
+        tm4 |   .0117532    .006007     1.96    -.0054496    .0289561
+        tm3 |  -.0051307   .0062853    -0.82    -.0231305    .0128691
+        tm2 |  -.0126135   .0068659    -1.84    -.0322763    .0070493
+        tm1 |  -.0110769    .006195    -1.79    -.0288183    .0066644
+        tp0 |  -.0424685   .0076696    -5.54    -.0644329   -.0205042
+        tp1 |  -.0776838   .0099619    -7.80    -.1062127   -.0491549
+        tp2 |  -.0840792   .0090818    -9.26    -.1100877   -.0580706
+        tp3 |  -.0852915   .0093312    -9.14    -.1120145   -.0585686
+        tp4 |  -.0915527   .0109249    -8.38    -.1228396   -.0602657
+        tp5 |  -.0928305   .0108584    -8.55     -.123927    -.061734
+        tp6 |  -.0795095   .0097401    -8.16    -.1074034   -.0516156
+        tp7 |  -.0994751   .0117995    -8.43    -.1332667   -.0656836
+        tp8 |  -.0874799   .0119909    -7.30    -.1218195   -.0531403
+---------------------------------------------------------------------
+WildBootstrap Standard errors
+with 999 Repetitions
+
+. 
+. matrix E = r(table)
+
+. local cnames : colfullnames E
+
+. local k = colsof(E)
+
+. 
+. tempfile ev_tmp
+
+. tempname pev
+
+. postfile `pev' int event_time double coef se ll ul using "`ev_tmp'", replace
+(file /var/folders/fw/4k6cqv395n9271k_qmms_nv00000gn/T//St71135.000003 not
+    found)
+
+. forvalues j = 1/`k' {
+  2.     local cname : word `j' of `cnames'
+  3.     local et = .
+  4.     if      regexm("`cname'", "^tm([0-9]+)$") local et = -real(regexs(1))
+  5.     else if regexm("`cname'", "^tp([0-9]+)$") local et =  real(regexs(1))
+  6.     else continue
+  7.     post `pev' (`et') (E[1,`j']) (E[2,`j']) (E[5,`j']) (E[6,`j'])
+  8. }
+
+. postclose `pev'
+
+. 
+. preserve
+
+. use "`ev_tmp'", clear
+
+. sort event_time
+
+. 
+. * Add t=-1 reference period
+. local n = _N + 1
+
+. set obs `n'
+Number of observations (_N) was 15, now 16.
+
+. replace event_time = -1 in `n'
+(1 real change made)
+
+. replace coef = 0      in `n'
+(1 real change made)
+
+. replace se   = 0      in `n'
+(1 real change made)
+
+. replace ll   = 0      in `n'
+(1 real change made)
+
+. replace ul   = 0      in `n'
+(1 real change made)
+
+. sort event_time
+
+. 
+. * Multiply by 100 for percentage interpretation
+. gen double coef_plot = coef * 100
+
+. gen double ll_plot   = ll * 100
+
+. gen double ul_plot   = ul * 100
+
+. 
+. save "`out_event'/event_`model_stub'.dta", replace
+file
+    /Users/sahaj/Desktop/honours_thesis/replication_package/output/50_robustn
+    > ess/basic_economy/southwest_only/event/event_wn_only_lnfare_maincov_nev
+    > er_dripw.dta saved
+
+. export delimited using "`out_event'/event_`model_stub'.csv", replace
+file /Users/sahaj/Desktop/honours_thesis/replication_package/output/50_robustne
+> ss/basic_economy/southwest_only/event/event_wn_only_lnfare_maincov_never_drip
+> w.csv saved
+
+. 
+. * --- Plot ---
+. quietly sum ll_plot
+
+. local ymin = floor(r(min)/5)*5 - 5
+
+. quietly sum ul_plot
+
+. local ymax = ceil(r(max)/5)*5 + 5
+
+. 
+. twoway ///
+>     (rarea ul_plot ll_plot event_time, color(gs8%40) lwidth(none)) ///
+>     (connected coef_plot event_time, sort lcolor(gs4) mcolor(gs4) ///
+>         msymbol(O) msize(small) lwidth(medthick)), ///
+>     yline(0, lcolor(gs6) lpattern(solid)) ///
+>     xline(0, lcolor(gs10) lpattern(shortdash)) ///
+>     xlabel(-${wpre_main}(2)${wpost_main}, labsize(medium)) ///
+>     ylabel(`ymin'(5)`ymax', labsize(medium)) ///
+>     yscale(range(`ymin' `ymax')) ///
+>     xtitle("Quarters Relative to Frontier's Entry", size(medlarge)) ///
+>     ytitle("Estimated Treatment Effect (%)", size(medlarge)) ///
+>     title("Southwest Airlines Only", size(medium)) ///
+>     legend(off) ///
+>     graphregion(color(white)) plotregion(color(white)) bgcolor(white) ///
+>     xsize(12) ysize(8)
+
+. 
+. graph export "`plots_dir'/es_`model_stub'.pdf", replace
+file
+    /Users/sahaj/Desktop/honours_thesis/replication_package/output/50_robustn
+    > ess/basic_economy/southwest_only/plots/es_wn_only_lnfare_maincov_never_
+    > dripw.pdf saved as PDF format
+
+. di as result "Saved: `plots_dir'/es_`model_stub'.pdf"
+Saved: /Users/sahaj/Desktop/honours_thesis/replication_package/output/50_robust
+> ness/basic_economy/southwest_only/plots/es_wn_only_lnfare_maincov_never_dripw
+> .pdf
+
+. 
+. preserve
+already preserved
+r(621);
+
+end of do-file
+r(621);
+.     do "${package_root}/code/50_robustness/07_never_exited.do"
+.     do "${package_root}/code/50_robustness/08_continuous_service.do"
+.     do "${package_root}/code/50_robustness/09_incumbent_passengers_seats_pret
+> reat_sa.do"
+. }
+r(621);
+
+end of do-file
+r(621);
