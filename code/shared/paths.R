@@ -1,0 +1,27 @@
+package_root <- Sys.getenv("REPLICATION_PACKAGE_ROOT", unset = normalizePath(getwd(), winslash = "/", mustWork = FALSE))
+package_root <- normalizePath(package_root, winslash = "/", mustWork = FALSE)
+repo_root <- dirname(package_root)
+
+code_root <- file.path(package_root, "code")
+data_root <- file.path(package_root, "data")
+output_root <- file.path(package_root, "output")
+logs_dir <- file.path(output_root, "logs")
+
+input_final_dir <- file.path(data_root, "final")
+raw_data_dir <- file.path(data_root, "raw")
+intermediate_data_dir <- file.path(data_root, "intermediate")
+
+summary_output_dir <- file.path(output_root, "10_summary_background")
+main_output_dir <- file.path(output_root, "20_main_results")
+mechanism_output_dir <- file.path(output_root, "30_mechanisms")
+heterogeneity_output_dir <- file.path(output_root, "40_heterogeneity")
+robustness_output_dir <- file.path(output_root, "50_robustness")
+shared_output_dir <- file.path(output_root, "shared")
+
+dir.create(logs_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(summary_output_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(main_output_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(mechanism_output_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(heterogeneity_output_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(robustness_output_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(shared_output_dir, recursive = TRUE, showWarnings = FALSE)
