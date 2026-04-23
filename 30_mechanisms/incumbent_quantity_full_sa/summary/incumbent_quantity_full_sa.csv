@@ -1,0 +1,4 @@
+seasonal_adjustment,outcome,model_stub,att,se,pvalue,ll,ul,n_obs,n_clusters
+Full sample,Log Departures,lndep_fullsample_sa_maincov_never_dripw,.1015010359408672,.022496222,,.061363213,.14163886,197451,6033
+Full sample,Log Passengers,lnpax_fullsample_sa_maincov_never_dripw,.1167990072424958,.02449869,,.074483387,.15911463,197451,6033
+Full sample,Log Seats,lnseats_fullsample_sa_maincov_never_drip,.1129466666590052,.023671808,,.071458615,.15443471,197451,6033
